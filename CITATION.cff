@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use nctest, please cite the paper below."
+title: "nctest: noise-corrected tests of predictive ability"
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/hfallahgoul/nctest"
+authors:
+  - family-names: Fallahgoul
+    given-names: Hasan
+preferred-citation:
+  type: article
+  title: "Noise-Corrected Tests for High-Dimensional Forecasting Models"
+  authors:
+    - family-names: Fallahgoul
+      given-names: Hasan
+  year: 2026
+  notes: "Working paper"

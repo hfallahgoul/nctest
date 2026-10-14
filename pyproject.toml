@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nctest"
+version = "0.1.0"
+description = "Noise-corrected tests of predictive ability for high-dimensional forecasting models"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Hasan Fallahgoul"}]
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.22"]
+keywords = ["forecast evaluation", "predictive ability", "Clark-West", "Diebold-Mariano",
+            "ridge regression", "realized volatility", "econometrics"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/hfallahgoul/nctest"
+Issues = "https://github.com/hfallahgoul/nctest/issues"
+Paper = "https://www.hfallahgoul.com/research"
+Replication = "https://github.com/hfallahgoul/noise-corrected-tests"
+
+[tool.setuptools.packages.find]
+where = ["src"]
