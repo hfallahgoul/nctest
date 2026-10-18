@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import core
+from . import classic, core
 from .rolling import ForecastPath, rolling_ridge
 
 
@@ -26,6 +26,10 @@ class Result:
     n_features: int = None
     penalty: float = None
     notes: list = field(default_factory=list)
+    p_DM: float = None           # one-sided p-values, candidate better
+    p_CW: float = None
+    p_CC_window: float = None
+    p_CC_difference: float = None
 
     @property
     def gap(self):
@@ -36,6 +40,10 @@ class Result:
     def summary(self):
         crit = core.CRIT_5
         mark = lambda t: "*" if t > crit else " "
+
+        def row(label, t, p):
+            ps = f"{p:>9.4f}" if p is not None else f"{'':>9}"
+            return f"  {label:<30}{t:>8.2f}{mark(t)}{ps}"
         lines = [
             "Noise-corrected test of predictive ability",
             f"  forecasts n = {self.n}, Bartlett bandwidth = {self.bandwidth}",
@@ -49,14 +57,13 @@ class Result:
             f"gap {self.gap:.4f}",
             f"  mean Psihat {self.mean_psi:.4f}, sanity ratio R {self.ratio:.2f}",
             "",
-            f"  {'statistic':<30}{'t':>8}",
-            f"  {'Diebold-Mariano':<30}{self.t_DM:>8.2f}{mark(self.t_DM)}",
-            f"  {'Clark-West':<30}{self.t_CW:>8.2f}{mark(self.t_CW)}",
-            f"  {'CC, window variance':<30}{self.t_CC_window:>8.2f}{mark(self.t_CC_window)}",
-            f"  {'CC, difference variance':<30}{self.t_CC_difference:>8.2f}"
-            f"{mark(self.t_CC_difference)}",
+            f"  {'statistic':<30}{'t':>8} {'p-value':>9}",
+            row("Diebold-Mariano", self.t_DM, self.p_DM),
+            row("Clark-West", self.t_CW, self.p_CW),
+            row("CC, window variance", self.t_CC_window, self.p_CC_window),
+            row("CC, difference variance", self.t_CC_difference, self.p_CC_difference),
             "",
-            f"  * exceeds the one-sided 5% critical value {crit:.3f}",
+            f"  * exceeds the one-sided 5% critical value {crit:.3f}; p-values are one-sided",
             f"  decision (reject only if both CC tests reject): "
             f"{'reject H0, the candidate adds predictive ability' if self.reject else 'do not reject H0'}",
         ]
@@ -78,27 +85,33 @@ def from_forecasts(y, yhat1, yhat2, psi, sigma2_w, bandwidth=None, window=None):
     y, yhat1, yhat2, psi, s2w = (np.asarray(v, float) for v in (y, yhat1, yhat2, psi, sigma2_w))
     n = len(y)
     b = core.default_bandwidth(n) if bandwidth is None else int(bandwidth)
-    dmcw = core.dm_cw(y, yhat1, yhat2)
+    dm = classic.dm_test(y, yhat1, yhat2)
+    cw = classic.cw_test(y, yhat1, yhat2)
     win = core.cc_test(y, yhat1, yhat2, psi, s2w, b)
     s2d, h = core.sigma2_difference(y)
     diff = core.cc_test(y, yhat1, yhat2, psi, s2d, b, influence=h)
     ratio = core.sanity_ratio(yhat1, yhat2, psi, s2w)
     notes = []
     if ratio < 1:
-        notes.append(f"R = {ratio:.2f} is below one. In population R >= 1, with equality when "
-                     "the extra predictors carry no signal; a value well below one means the "
-                     "correction exceeds the forecast increment and is mis-scaled.")
+        notes.append(f"R = {ratio:.2f} is below one. With exogenous benchmark regressors "
+                     "R >= 1 in population, with equality when the extra predictors carry no "
+                     "signal. When the benchmark regresses on the target's own past (a HAR, "
+                     "say) its null value is kappa_a, about 0.94, so compare R with that. A "
+                     "value well below the relevant reference means the correction exceeds "
+                     "the forecast increment and biases t_CC upward.")
     if window is not None and window > n ** (1 / 3):
         notes.append(f"T = {window} exceeds n^(1/3) = {n ** (1 / 3):.1f}, so the sufficient "
-                     "bandwidth condition T = o(n^(1/3)) does not hold; the paper's Section 5.6 "
-                     "measures size in this regime.")
+                     "bandwidth condition T = o(n^(1/3)) does not hold; the paper's simulations "
+                     "measure size in this regime.")
     return Result(
-        n=n, bandwidth=b, t_DM=dmcw["t_DM"], t_CW=dmcw["t_CW"],
+        n=n, bandwidth=b, t_DM=dm.statistic, t_CW=cw.statistic,
         t_CC_window=win["t"], t_CC_difference=diff["t"],
         reject_window=win["reject"], reject_difference=diff["reject"],
         reject=core.intersection(win, diff), ratio=ratio, mean_psi=float(psi.mean()),
         mspe_benchmark=float(np.mean((y - yhat1) ** 2)),
-        mspe_candidate=float(np.mean((y - yhat2) ** 2)), window=window, notes=notes)
+        mspe_candidate=float(np.mean((y - yhat2) ** 2)), window=window, notes=notes,
+        p_DM=dm.p_value, p_CW=cw.p_value, p_CC_window=win["p_value"],
+        p_CC_difference=diff["p_value"])
 
 
 def compare(y, X, benchmark="mean", window=250, penalty=1.0, standardize=True,

@@ -8,6 +8,8 @@ to know something else: whether the enlarged model forecasts better once its est
 is paid for. The two questions have different answers when the model is large relative to
 the estimation window. `nctest` implements the noise-corrected (CC) test of Fallahgoul (2026),
 which targets the second question, and reports it next to Diebold–Mariano and Clark–West.
+The Diebold–Mariano and Clark–West tests are also available on their own, for any pair of
+forecasts.
 
 ## Install
 
@@ -38,20 +40,61 @@ Noise-corrected test of predictive ability
   MSPE benchmark 0.179374, candidate 0.197627, gap -0.1018
   mean Psihat 0.1042, sanity ratio R 0.96
 
-  statistic                            t
-  Diebold-Mariano                  -9.80
-  Clark-West                       -0.49
-  CC, window variance              -0.05
-  CC, difference variance          -3.06
+  statistic                            t   p-value
+  Diebold-Mariano                  -9.80    1.0000
+  Clark-West                       -0.49    0.6872
+  CC, window variance              -0.05    0.5200
+  CC, difference variance          -3.06    0.9989
 
-  * exceeds the one-sided 5% critical value 1.645
+  * exceeds the one-sided 5% critical value 1.645; p-values are one-sided
   decision (reject only if both CC tests reject): do not reject H0
 ```
 
 The summary also prints notes on the sanity ratio and the bandwidth condition when they apply.
 `res.reject` is the decision of the intersection rule (both CC statistics reject at 5%).
-The other fields of `res` hold every statistic, the sanity ratio and the out-of-sample
-mean-square gap.
+The other fields of `res` hold every statistic and its one-sided p-value, the sanity ratio
+and the out-of-sample mean-square gap.
+
+## Diebold–Mariano and Clark–West on their own
+
+`dm_test` and `cw_test` need only the realised values and the two forecasts, so they work
+for any forecasting method, nested or not, at any horizon:
+
+```python
+res = nctest.dm_test(y, yhat1, yhat2, horizon=5, hln=True)
+print(res)
+res.statistic, res.p_value, res.reject
+
+nctest.cw_test(y, yhat1, yhat2, horizon=5)
+```
+
+```
+Diebold-Mariano test (HLN-corrected)
+  n = 600, horizon = 5, uniform kernel, bandwidth = 4
+  mean differential 0.0832501, long-run variance 1.16755
+  statistic 1.873, p-value 0.0308 (greater: candidate better; t(n-1))
+  reject H0 at the 5% level
+```
+
+Model 1 is the benchmark and model 2 the candidate; a positive statistic favours the
+candidate. The options are:
+
+| argument | `dm_test` | `cw_test` |
+|---|---|---|
+| `horizon` | $h$; the long-run variance uses $h-1$ lags by default | same |
+| `bandwidth` | `None` ($h-1$), `"auto"` (Newey–West 1994 rule), or an integer | same |
+| `kernel` | uniform at the default bandwidth (Diebold–Mariano 1995), Bartlett otherwise; a non-positive uniform estimate falls back to Bartlett | Bartlett |
+| `alternative` | `"greater"` (default), `"less"`, `"two-sided"` | one-sided by construction |
+| `loss` | `"squared"`, `"absolute"` or a function of the error | squared |
+| `hln` | Harvey–Leybourne–Newbold correction with $t_{n-1}$ critical values | – |
+
+At $h=1$ the defaults studentise by the sample variance, which reproduces `dm_cw` from
+version 0.1. Each call returns a `TestResult` with the statistic, p-value, decision, the mean
+differential and the variance used; `res.as_dict()` exports it. Clark–West requires the
+benchmark to be nested in the candidate. It tests whether the extra predictors improve the
+population forecast, which is not the same as whether the candidate forecasts better at the
+estimation window in use; the noise-corrected test answers the second question.
+`examples/dm_cw_example.py` runs both tests at a five-step horizon.
 
 ## What `compare` does
 
@@ -79,18 +122,22 @@ weights $a_t$ yourself and call
 res = nctest.from_forecasts(y, yhat1, yhat2, psi=nctest.psihat(A), sigma2_w=s2w)
 ```
 
-The building blocks (`cc_test`, `dm_cw`, `sigma2_window`, `sigma2_difference`,
+The building blocks (`cc_test`, `sigma2_window`, `sigma2_difference`,
 `sanity_ratio`, `intersection`, `bartlett_lrv`) are exported for custom designs.
 
 ## Reading the output
 
-- **Sanity ratio R.** In population R cannot fall below one. A value below one means the
-  correction exceeds the whole forecast increment, and the test is mis-scaled for that design.
+- **Sanity ratio R.** With exogenous benchmark regressors R cannot fall below one in
+  population. When the benchmark regresses on the target's own past, as a HAR does, its null
+  value is $\kappa_a$, about 0.94, and R should be compared with that. A value well below
+  the relevant reference means the correction exceeds the forecast increment, which biases
+  $t_{CC}$ upward. Where $\hat\Psi$ is close to zero, R carries little information.
 - **Bandwidth condition.** The paper's sufficient condition is $T=o(n^{1/3})$. Most
-  applications violate it; Section 5.6 of the paper measures size in that regime.
+  applications violate it; the paper's simulations measure size in that regime.
 - **Own-lag designs.** When the extra predictors are lags of the target, as in the HAR
   example, the correction is accurate only to the extent the paper's scope condition holds;
-  Section 4 of the paper measures it for designs of this kind.
+  the paper measures it for designs of this kind. A HAR benchmark enlarged with predictors
+  from outside the target's history is the design to avoid.
 
 ## Reference
 

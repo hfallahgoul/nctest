@@ -100,7 +100,8 @@ def cc_test(y, yhat1, yhat2, psi, sigma2, bandwidth=None, influence=None, crit=C
                variance is that of d^CC_t - mean + mean(Psihat)(h_t - mean(h)). Leave None for
                a known sigma2 or for the window estimator, whose estimation error is already
                part of d^CC_t.
-    Returns the mean differential, its long-run variance, t_CC and the decision.
+    Returns the mean differential, its long-run variance, t_CC, its one-sided p-value and
+    the decision.
     """
     y, yhat1, yhat2, psi = (np.asarray(v, float) for v in (y, yhat1, yhat2, psi))
     if bandwidth is None:
@@ -111,12 +112,17 @@ def cc_test(y, yhat1, yhat2, psi, sigma2, bandwidth=None, influence=None, crit=C
         d - d.mean() + psi.mean() * (np.asarray(influence, float) - np.mean(influence)))
     lrv = max(bartlett_lrv(score, bandwidth), 1e-14)
     t = math.sqrt(len(d)) * d.mean() / math.sqrt(lrv)
-    return dict(mean=float(d.mean()), lrv=float(lrv), t=float(t), reject=bool(t > crit))
+    p = 0.5 * math.erfc(t / math.sqrt(2.0))
+    return dict(mean=float(d.mean()), lrv=float(lrv), t=float(t), p_value=float(p),
+                reject=bool(t > crit))
 
 
 def dm_cw(y, yhat1, yhat2, bandwidth=None):
     """Diebold-Mariano and Clark-West t-statistics. With bandwidth=None the sample variance
-    studentises (one-step forecasts); otherwise the Bartlett long-run variance."""
+    studentises (one-step forecasts); otherwise the Bartlett long-run variance.
+
+    Kept for compatibility with 0.1. For p-values, horizons, loss functions and kernel
+    choice, use nctest.dm_test and nctest.cw_test."""
     y, yhat1, yhat2 = (np.asarray(v, float) for v in (y, yhat1, yhat2))
     e1, e2 = y - yhat1, y - yhat2
     dDM = e1 ** 2 - e2 ** 2
@@ -130,8 +136,12 @@ def dm_cw(y, yhat1, yhat2, bandwidth=None):
 
 
 def sanity_ratio(yhat1, yhat2, psi, sigma2):
-    """R = mean(Delta_t^2) / mean(sigma2_t Psihat_t). It cannot fall below one in population;
-    a realised value below one says the correction is mis-scaled."""
+    """R = mean(Delta_t^2) / mean(sigma2_t Psihat_t).
+
+    With exogenous benchmark regressors R cannot fall below one in population. When the
+    benchmark regresses on the target's own past its null value is kappa_a instead, about
+    0.94 for HAR-type designs, and R should be read against that. Where Psihat is close to
+    zero the correction barely moves the statistic and R carries little information."""
     D = np.asarray(yhat2, float) - np.asarray(yhat1, float)
     return float(np.mean(D ** 2) / np.mean(np.asarray(sigma2, float) * np.asarray(psi, float)))
 
